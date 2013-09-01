@@ -3177,6 +3177,8 @@ meta_window_make_fullscreen_internal (MetaWindow  *window)
 {
   if (!window->fullscreen)
     {
+      MetaRectangle old_rect, new_rect;
+
       meta_topic (META_DEBUG_WINDOW_OPS,
                   "Fullscreening %s\n", window->desc);
 
@@ -3190,6 +3192,7 @@ meta_window_make_fullscreen_internal (MetaWindow  *window)
           meta_window_unshade (window, timestamp);
         }
 
+      meta_window_get_frame_rect (window, &old_rect);
       meta_window_save_rect (window);
 
       window->fullscreen = TRUE;
@@ -3205,6 +3208,13 @@ meta_window_make_fullscreen_internal (MetaWindow  *window)
 
       /* For the auto-minimize feature, if we fail to get focus */
       meta_screen_queue_check_fullscreen (window->screen);
+
+      meta_screen_get_monitor_geometry (window->screen,
+                                        window->monitor->number,
+                                        &new_rect);
+
+      meta_compositor_fullscreen_window (window->display->compositor,
+                                         window, &old_rect, &new_rect);
 
       g_object_notify_by_pspec (G_OBJECT (window), obj_props[PROP_FULLSCREEN]);
     }
@@ -3233,7 +3243,7 @@ meta_window_unmake_fullscreen (MetaWindow  *window)
 
   if (window->fullscreen)
     {
-      MetaRectangle target_rect;
+      MetaRectangle old_rect, target_rect;
 
       meta_topic (META_DEBUG_WINDOW_OPS,
                   "Unfullscreening %s\n", window->desc);
@@ -3242,6 +3252,7 @@ meta_window_unmake_fullscreen (MetaWindow  *window)
       target_rect = window->saved_rect;
 
       meta_window_frame_size_changed (window);
+      meta_window_get_frame_rect (window, &old_rect);
 
       /* Window's size hints may have changed while maximized, making
        * saved_rect invalid.  #329152
@@ -3259,6 +3270,11 @@ meta_window_unmake_fullscreen (MetaWindow  *window)
                                         META_MOVE_RESIZE_MOVE_ACTION | META_MOVE_RESIZE_RESIZE_ACTION | META_MOVE_RESIZE_STATE_CHANGED,
                                         NorthWestGravity,
                                         target_rect);
+
+      meta_compositor_unfullscreen_window (window->display->compositor,
+                                           window,
+                                           &old_rect,
+                                           &target_rect);
 
       meta_window_update_layer (window);
 

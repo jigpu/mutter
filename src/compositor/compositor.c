@@ -769,6 +769,26 @@ meta_compositor_hide_window (MetaCompositor *compositor,
 }
 
 void
+meta_compositor_fullscreen_window (MetaCompositor *compositor,
+                                   MetaWindow     *window,
+                                   MetaRectangle  *old_rect,
+                                   MetaRectangle  *new_rect)
+{
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
+  meta_window_actor_fullscreen (window_actor, old_rect, new_rect);
+}
+
+void
+meta_compositor_unfullscreen_window (MetaCompositor *compositor,
+                                     MetaWindow     *window,
+                                     MetaRectangle  *old_rect,
+                                     MetaRectangle  *new_rect)
+{
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
+  meta_window_actor_unfullscreen (window_actor, old_rect, new_rect);
+}
+
+void
 meta_compositor_maximize_window (MetaCompositor    *compositor,
                                  MetaWindow        *window,
 				 MetaRectangle	   *old_rect,

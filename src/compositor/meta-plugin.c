@@ -132,6 +132,20 @@ meta_plugin_unmaximize_completed (MetaPlugin      *plugin,
 }
 
 void
+meta_plugin_fullscreen_completed (MetaPlugin      *plugin,
+                                  MetaWindowActor *actor)
+{
+  meta_plugin_window_effect_completed (plugin, actor, META_PLUGIN_FULLSCREEN);
+}
+
+void
+meta_plugin_unfullscreen_completed (MetaPlugin      *plugin,
+                                    MetaWindowActor *actor)
+{
+  meta_plugin_window_effect_completed (plugin, actor, META_PLUGIN_UNFULLSCREEN);
+}
+
+void
 meta_plugin_map_completed (MetaPlugin      *plugin,
                            MetaWindowActor *actor)
 {

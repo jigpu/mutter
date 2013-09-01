@@ -57,6 +57,7 @@ struct _MetaPlugin
  * @minimize: virtual function called when a window is minimized
  * @maximize: virtual function called when a window is maximized
  * @unmaximize: virtual function called when a window is unmaximized
+ * @fullscreen: virtual function called when a window is fullscreened
  * @map: virtual function called when a window is mapped
  * @destroy: virtual function called when a window is destroyed
  * @switch_workspace: virtual function called when the user switches to another
@@ -136,6 +137,32 @@ struct _MetaPluginClass
                             gint                y,
                             gint                width,
                             gint                height);
+
+  /**
+   * MetaPluginClass::fullscreen:
+   * @actor: a #MetaWindowActor
+   * @old_rect: the rectangle inside @actor for the window region
+   * @target_rect: the target rectangle
+   *
+   * Virtual function called when the window represented by @actor is fullscreened.
+   */
+  void (*fullscreen)       (MetaPlugin         *plugin,
+                            MetaWindowActor    *actor,
+                            MetaRectangle      *old_rect,
+                            MetaRectangle      *target_rect);
+
+  /**
+   * MetaPluginClass::unfullscreen:
+   * @actor: a #MetaWindowActor
+   * @old_rect: the rectangle inside @actor for the window region
+   * @target_rect: the target rectangle
+   *
+   * Virtual function called when the window represented by @actor is unfullscreened.
+   */
+  void (*unfullscreen)     (MetaPlugin         *plugin,
+                            MetaWindowActor    *actor,
+                            MetaRectangle      *old_rect,
+                            MetaRectangle      *target_rect);
 
   /**
    * MetaPluginClass::map:
@@ -392,6 +419,14 @@ meta_plugin_maximize_completed (MetaPlugin      *plugin,
 void
 meta_plugin_unmaximize_completed (MetaPlugin      *plugin,
                                   MetaWindowActor *actor);
+
+void
+meta_plugin_fullscreen_completed   (MetaPlugin      *plugin,
+                                    MetaWindowActor *actor);
+
+void
+meta_plugin_unfullscreen_completed (MetaPlugin      *plugin,
+                                    MetaWindowActor *actor);
 
 void
 meta_plugin_map_completed (MetaPlugin      *plugin,

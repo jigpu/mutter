@@ -91,6 +91,8 @@ struct _MetaWindowActorPrivate
   gint              unmaximize_in_progress;
   gint              map_in_progress;
   gint              destroy_in_progress;
+  gint              fullscreen_in_progress;
+  gint              unfullscreen_in_progress;
 
   /* List of FrameData for recent frames */
   GList            *frames;
@@ -1039,7 +1041,9 @@ meta_window_actor_effect_in_progress (MetaWindowActor *self)
 	  self->priv->maximize_in_progress ||
 	  self->priv->unmaximize_in_progress ||
 	  self->priv->map_in_progress ||
-	  self->priv->destroy_in_progress);
+	  self->priv->destroy_in_progress ||
+	  self->priv->fullscreen_in_progress ||
+          self->priv->unfullscreen_in_progress);
 }
 
 static gboolean
@@ -1050,6 +1054,8 @@ is_freeze_thaw_effect (gulong event)
   case META_PLUGIN_DESTROY:
   case META_PLUGIN_MAXIMIZE:
   case META_PLUGIN_UNMAXIMIZE:
+  case META_PLUGIN_FULLSCREEN:
+  case META_PLUGIN_UNFULLSCREEN:
     return TRUE;
     break;
   default:
@@ -1082,6 +1088,8 @@ start_simple_effect (MetaWindowActor *self,
     break;
   case META_PLUGIN_UNMAXIMIZE:
   case META_PLUGIN_MAXIMIZE:
+  case META_PLUGIN_FULLSCREEN:
+  case META_PLUGIN_UNFULLSCREEN:
   case META_PLUGIN_SWITCH_WORKSPACE:
     g_assert_not_reached ();
     break;
@@ -1190,6 +1198,22 @@ meta_window_actor_effect_completed (MetaWindowActor *self,
       {
 	g_warning ("Error in maximize accounting.");
 	priv->maximize_in_progress = 0;
+      }
+    break;
+  case META_PLUGIN_FULLSCREEN:
+    priv->fullscreen_in_progress--;
+    if (priv->fullscreen_in_progress < 0)
+      {
+        g_warning ("Error in fullscreen accounting.");
+        priv->fullscreen_in_progress = 0;
+      }
+    break;
+  case META_PLUGIN_UNFULLSCREEN:
+    priv->unfullscreen_in_progress--;
+    if (priv->unfullscreen_in_progress < 0)
+      {
+        g_warning ("Error in fullscreen accounting.");
+        priv->unfullscreen_in_progress = 0;
       }
     break;
   case META_PLUGIN_SWITCH_WORKSPACE:
@@ -1366,6 +1390,50 @@ meta_window_actor_hide (MetaWindowActor *self,
   if (event == 0 ||
       !start_simple_effect (self, event))
     clutter_actor_hide (CLUTTER_ACTOR (self));
+}
+
+void
+meta_window_actor_fullscreen (MetaWindowActor *self,
+                              MetaRectangle   *old_rect,
+                              MetaRectangle   *new_rect)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+  MetaCompositor *compositor = priv->compositor;
+
+  self->priv->fullscreen_in_progress++;
+  meta_window_actor_freeze (self);
+
+  if (!meta_plugin_manager_event_fullscreen (compositor->plugin_mgr,
+                                             self,
+                                             META_PLUGIN_FULLSCREEN,
+                                             old_rect, new_rect))
+
+    {
+      self->priv->fullscreen_in_progress--;
+      meta_window_actor_thaw (self);
+    }
+}
+
+void
+meta_window_actor_unfullscreen (MetaWindowActor *self,
+                                MetaRectangle   *old_rect,
+                                MetaRectangle   *new_rect)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+  MetaCompositor *compositor = priv->compositor;
+
+  self->priv->unfullscreen_in_progress++;
+  meta_window_actor_freeze (self);
+
+  if (!meta_plugin_manager_event_fullscreen (compositor->plugin_mgr,
+                                             self,
+                                             META_PLUGIN_UNFULLSCREEN,
+                                             old_rect, new_rect))
+
+    {
+      self->priv->unfullscreen_in_progress--;
+      meta_window_actor_thaw (self);
+    }
 }
 
 void

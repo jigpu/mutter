@@ -24,6 +24,12 @@ void meta_window_actor_maximize   (MetaWindowActor *self,
 void meta_window_actor_unmaximize (MetaWindowActor *self,
                                    MetaRectangle   *old_rect,
                                    MetaRectangle   *new_rect);
+void meta_window_actor_fullscreen   (MetaWindowActor *self,
+                                     MetaRectangle   *old_rect,
+                                     MetaRectangle   *new_rect);
+void meta_window_actor_unfullscreen (MetaWindowActor *self,
+                                     MetaRectangle   *old_rect,
+                                     MetaRectangle   *new_rect);
 
 void meta_window_actor_process_x11_damage (MetaWindowActor    *self,
                                            XDamageNotifyEvent *event);

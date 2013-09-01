@@ -259,6 +259,48 @@ meta_plugin_manager_event_maximize (MetaPluginManager *plugin_mgr,
   return retval;
 }
 
+gboolean
+meta_plugin_manager_event_fullscreen (MetaPluginManager *plugin_mgr,
+                                      MetaWindowActor   *actor,
+                                      unsigned long      event,
+                                      MetaRectangle     *old_rect,
+                                      MetaRectangle     *target_rect)
+{
+  MetaPlugin *plugin = plugin_mgr->plugin;
+  MetaPluginClass *klass = META_PLUGIN_GET_CLASS (plugin);
+  MetaDisplay *display = plugin_mgr->compositor->display;
+  gboolean retval = FALSE;
+
+  if (display->display_opening)
+    return FALSE;
+
+  switch (event)
+    {
+    case META_PLUGIN_FULLSCREEN:
+      if (klass->fullscreen)
+        {
+          retval = TRUE;
+          meta_plugin_manager_kill_window_effects (plugin_mgr,
+                                                   actor);
+          klass->fullscreen (plugin, actor, old_rect, target_rect);
+        }
+      break;
+    case META_PLUGIN_UNFULLSCREEN:
+      if (klass->unfullscreen)
+        {
+          retval = TRUE;
+          meta_plugin_manager_kill_window_effects (plugin_mgr,
+                                                   actor);
+          klass->unfullscreen (plugin, actor, old_rect, target_rect);
+        }
+      break;
+    default:
+      g_warning ("Incorrect handler called for event %lu", event);
+    }
+
+  return retval;
+}
+
 /*
  * The public method that the compositor hooks into for desktop switching.
  *

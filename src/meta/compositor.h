@@ -89,6 +89,15 @@ void meta_compositor_switch_workspace  (MetaCompositor      *compositor,
                                         MetaWorkspace       *to,
                                         MetaMotionDirection  direction);
 
+void meta_compositor_fullscreen_window   (MetaCompositor      *compositor,
+                                          MetaWindow          *window,
+                                          MetaRectangle       *old_rect,
+                                          MetaRectangle       *new_rect);
+void meta_compositor_unfullscreen_window (MetaCompositor      *compositor,
+                                          MetaWindow          *window,
+                                          MetaRectangle       *old_rect,
+                                          MetaRectangle       *new_rect);
+
 void meta_compositor_maximize_window   (MetaCompositor      *compositor,
                                         MetaWindow          *window,
                                         MetaRectangle       *old_rect,

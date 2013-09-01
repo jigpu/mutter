@@ -36,6 +36,8 @@
 #define META_PLUGIN_DESTROY          (1<<4)
 #define META_PLUGIN_SWITCH_WORKSPACE (1<<5)
 #define META_PLUGIN_UNMINIMIZE       (1<<6)
+#define META_PLUGIN_FULLSCREEN       (1<<7)
+#define META_PLUGIN_UNFULLSCREEN     (1<<8)
 
 #define META_PLUGIN_ALL_EFFECTS      (~0)
 
@@ -60,6 +62,12 @@ gboolean meta_plugin_manager_event_maximize    (MetaPluginManager *mgr,
                                                 gint               target_y,
                                                 gint               target_width,
                                                 gint               target_height);
+
+gboolean meta_plugin_manager_event_fullscreen  (MetaPluginManager *mgr,
+                                                MetaWindowActor   *actor,
+                                                unsigned long      event,
+                                                MetaRectangle     *old_rect,
+                                                MetaRectangle     *target_rect);
 
 gboolean meta_plugin_manager_switch_workspace (MetaPluginManager   *mgr,
                                                gint                 from,
