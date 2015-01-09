@@ -51,12 +51,15 @@ mutter_built_sources += \
 	gtk-shell-server-protocol.h		\
 	xdg-shell-protocol.c			\
 	xdg-shell-server-protocol.h		\
+	tablet-protocol.c			\
+	tablet-server-protocol.h		\
 	$(NULL)
 endif
 
 wayland_protocols =				\
 	$(WAYLAND_PROTOCOLS_DIR)/unstable/pointer-gestures/pointer-gestures-unstable-v1.xml \
 	$(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml \
+	$(WAYLAND_PROTOCOLS_DIR)/unstable/tablet/tablet-unstable-v1.xml \
 	$(NULL)
 
 internal_wayland_protocols =			\
@@ -493,6 +496,10 @@ pointer-gestures-server-protocol.h: $(WAYLAND_PROTOCOLS_DIR)/unstable/pointer-ge
 xdg-shell-protocol.c: $(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
 xdg-shell-server-protocol.h: $(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
+tablet-protocol.c: $(WAYLAND_PROTOCOLS_DIR)/unstable/tablet/tablet-unstable-v1.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
+tablet-server-protocol.h: $(WAYLAND_PROTOCOLS_DIR)/unstable/tablet/tablet-unstable-v1.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
 
 %-protocol.c : $(srcdir)/wayland/protocol/%.xml
