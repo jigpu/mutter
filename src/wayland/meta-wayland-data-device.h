@@ -51,15 +51,24 @@ struct _MetaWaylandDataSourceFuncs
   void (* target)  (MetaWaylandDataSource *source,
                     const gchar           *mime_type);
   void (* cancel)  (MetaWaylandDataSource *source);
+
+  void (* action)         (MetaWaylandDataSource *source,
+                           uint32_t               action);
+  void (* drop_performed) (MetaWaylandDataSource *source);
+  void (* drag_finished)  (MetaWaylandDataSource *source);
 };
 
 struct _MetaWaylandDataSource
 {
   MetaWaylandDataSourceFuncs funcs;
+  MetaWaylandDataOffer *offer;
   struct wl_resource *resource;
   struct wl_array mime_types;
   gpointer user_data;
   gboolean has_target;
+  uint32_t dnd_actions;
+  uint32_t user_dnd_action;
+  uint32_t current_dnd_action;
 };
 
 void meta_wayland_data_device_manager_init (MetaWaylandCompositor *compositor);
@@ -92,6 +101,12 @@ gboolean meta_wayland_data_source_has_mime_type  (const MetaWaylandDataSource *s
 void     meta_wayland_data_source_send           (MetaWaylandDataSource *source,
                                                   const gchar           *mime_type,
                                                   gint                   fd);
+void     meta_wayland_data_source_update_actions (MetaWaylandDataSource *source,
+                                                  uint32_t               dnd_actions);
+void     meta_wayland_data_source_notify_finish  (MetaWaylandDataSource *source);
+
+void     meta_wayland_data_source_set_current_action (MetaWaylandDataSource *source,
+                                                      uint32_t               action);
 
 const MetaWaylandDragDestFuncs *
          meta_wayland_data_device_get_drag_dest_funcs (void);

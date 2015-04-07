@@ -41,12 +41,65 @@ struct _MetaWaylandDataOffer
   struct wl_resource *resource;
   MetaWaylandDataSource *source;
   struct wl_listener source_destroy_listener;
+  uint32_t dnd_actions;
+  uint32_t preferred_dnd_action;
 };
 
 static void
 unbind_resource (struct wl_resource *resource)
 {
   wl_list_remove (wl_resource_get_link (resource));
+}
+
+static uint32_t
+data_offer_choose_action (MetaWaylandDataOffer *offer)
+{
+  MetaWaylandDataSource *source = offer->source;
+  uint32_t available_actions;
+
+  available_actions = source->dnd_actions & offer->dnd_actions;
+
+  if (!available_actions)
+    return 0;
+
+  /* If the user is forcing an action, go for it */
+  if ((source->user_dnd_action & available_actions) != 0)
+    return source->user_dnd_action;
+
+  /* If the dest side has a preferred DnD action, use it */
+  if ((offer->preferred_dnd_action & available_actions) != 0)
+    return offer->preferred_dnd_action;
+
+  /* Use the first found action, in bit order */
+  return 1 << (ffs (available_actions) - 1);
+}
+
+void
+meta_wayland_data_source_set_current_action (MetaWaylandDataSource *source,
+                                             uint32_t               action)
+{
+  if (source->current_dnd_action == action)
+    return;
+
+  source->current_dnd_action = action;
+  source->funcs.action (source, action);
+}
+
+static void
+data_offer_update_action (MetaWaylandDataOffer *offer)
+{
+  uint32_t action;
+
+  if (!offer->source)
+    return;
+
+  action = data_offer_choose_action (offer);
+
+  if (offer->source->current_dnd_action == action)
+    return;
+
+  meta_wayland_data_source_set_current_action (offer->source, action);
+  wl_data_offer_send_action (offer->resource, action);
 }
 
 static void
@@ -86,20 +139,54 @@ data_offer_destroy (struct wl_client *client, struct wl_resource *resource)
   wl_resource_destroy (resource);
 }
 
+static void
+data_offer_set_actions (struct wl_client   *client,
+                        struct wl_resource *resource,
+                        uint32_t            dnd_actions,
+                        uint32_t            preferred_action)
+{
+  MetaWaylandDataOffer *offer = wl_resource_get_user_data (resource);
+
+  if (offer->dnd_actions == dnd_actions &&
+      offer->preferred_dnd_action == preferred_action)
+    return;
+
+  offer->dnd_actions = dnd_actions;
+  offer->preferred_dnd_action = preferred_action;
+
+  data_offer_update_action (offer);
+}
+
 static const struct wl_data_offer_interface data_offer_interface = {
   data_offer_accept,
   data_offer_receive,
   data_offer_destroy,
+  data_offer_set_actions
 };
+
+void
+meta_wayland_data_source_notify_finish (MetaWaylandDataSource *source)
+{
+  source->funcs.drag_finished (source);
+}
 
 static void
 destroy_data_offer (struct wl_resource *resource)
 {
   MetaWaylandDataOffer *offer = wl_resource_get_user_data (resource);
 
-  if (offer->source && offer->source->resource)
-    wl_list_remove (&offer->source_destroy_listener.link);
+  if (offer->source)
+    {
+      if (offer == offer->source->offer)
+        meta_wayland_data_source_notify_finish (offer->source);
 
+      if (offer->source->resource)
+        wl_list_remove (&offer->source_destroy_listener.link);
+
+      offer->source = NULL;
+    }
+
+  meta_display_sync_wayland_input_focus (meta_get_display ());
   g_slice_free (MetaWaylandDataOffer, offer);
 }
 
@@ -134,6 +221,9 @@ meta_wayland_data_source_send_offer (MetaWaylandDataSource *source,
   wl_array_for_each (p, &source->mime_types)
     wl_data_offer_send_offer (offer->resource, *p);
 
+  data_offer_update_action (offer);
+  source->offer = offer;
+
   return offer->resource;
 }
 
@@ -153,13 +243,43 @@ data_source_destroy (struct wl_client *client, struct wl_resource *resource)
   wl_resource_destroy (resource);
 }
 
+void
+meta_wayland_data_source_update_actions (MetaWaylandDataSource *source,
+                                         uint32_t               dnd_actions)
+{
+  if (source->dnd_actions == dnd_actions)
+    return;
+
+  source->dnd_actions = dnd_actions;
+
+  if (source->offer)
+    {
+      wl_data_offer_send_source_actions (source->offer->resource,
+                                         source->dnd_actions);
+      data_offer_update_action (source->offer);
+    }
+}
+
+static void
+data_source_set_actions (struct wl_client   *client,
+                         struct wl_resource *resource,
+                         uint32_t            dnd_actions)
+{
+  MetaWaylandDataSource *source = wl_resource_get_user_data (resource);
+
+  meta_wayland_data_source_update_actions (source, dnd_actions);
+}
+
 static struct wl_data_source_interface data_source_interface = {
   data_source_offer,
-  data_source_destroy
+  data_source_destroy,
+  data_source_set_actions
 };
 
 struct _MetaWaylandDragGrab {
   MetaWaylandPointerGrab  generic;
+
+  MetaWaylandKeyboardGrab keyboard_grab;
 
   MetaWaylandSeat        *seat;
   struct wl_client       *drag_client;
@@ -180,6 +300,7 @@ struct _MetaWaylandDragGrab {
   struct wl_listener      drag_origin_listener;
 
   int                     drag_start_x, drag_start_y;
+  ClutterModifierType     buttons;
 };
 
 static void
@@ -188,6 +309,7 @@ destroy_drag_focus (struct wl_listener *listener, void *data)
   MetaWaylandDragGrab *grab = wl_container_of (listener, grab, drag_focus_listener);
 
   grab->drag_focus_data_device = NULL;
+  grab->drag_focus = NULL;
 }
 
 void
@@ -217,6 +339,7 @@ meta_wayland_drag_grab_set_focus (MetaWaylandDragGrab *drag_grab,
   client = wl_resource_get_client (surface->resource);
 
   data_device_resource = wl_resource_find_for_client (&seat->data_device.resource_list, client);
+  drag_grab->drag_data_source->offer = NULL;
 
   if (drag_grab->drag_data_source && data_device_resource)
     offer = meta_wayland_data_source_send_offer (drag_grab->drag_data_source,
@@ -242,6 +365,28 @@ drag_grab_focus (MetaWaylandPointerGrab *grab,
   MetaWaylandDragGrab *drag_grab = (MetaWaylandDragGrab*) grab;
 
   meta_wayland_drag_grab_set_focus (drag_grab, surface);
+}
+
+static void
+data_source_update_user_dnd_action (MetaWaylandDataSource *source,
+                                    ClutterModifierType    modifiers)
+{
+  uint32_t user_dnd_action = 0;
+
+  if (modifiers & CLUTTER_SHIFT_MASK)
+    user_dnd_action = WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE;
+  else if (modifiers & CLUTTER_CONTROL_MASK)
+    user_dnd_action = WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY;
+  else if (modifiers & (CLUTTER_MOD1_MASK | CLUTTER_BUTTON2_MASK))
+    user_dnd_action = WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK;
+
+  if (source->user_dnd_action == user_dnd_action)
+    return;
+
+  source->user_dnd_action = user_dnd_action;
+
+  if (source->offer)
+    data_offer_update_action (source->offer);
 }
 
 static void
@@ -288,6 +433,7 @@ data_device_end_drag_grab (MetaWaylandDragGrab *drag_grab)
   drag_grab->seat->data_device.current_grab = NULL;
 
   meta_wayland_pointer_end_grab (drag_grab->generic.pointer);
+  meta_wayland_keyboard_end_grab (drag_grab->keyboard_grab.keyboard);
   g_slice_free (MetaWaylandDragGrab, drag_grab);
 }
 
@@ -302,12 +448,20 @@ drag_grab_button (MetaWaylandPointerGrab *grab,
   if (drag_grab->generic.pointer->grab_button == clutter_event_get_button (event) &&
       event_type == CLUTTER_BUTTON_RELEASE)
     {
+      MetaWaylandDataSource *data_source = drag_grab->drag_data_source;
       gboolean success = FALSE;
 
-      if (drag_grab->drag_data_source->has_target)
+      if (drag_grab->drag_focus &&
+          data_source->has_target &&
+          data_source->current_dnd_action)
         {
           meta_wayland_surface_drag_dest_drop (drag_grab->drag_focus);
+          data_source->funcs.drop_performed (data_source);
           success = TRUE;
+        }
+      else
+        {
+          data_source->funcs.cancel (data_source);
         }
 
       /* Finish drag and let actor self-destruct */
@@ -325,6 +479,35 @@ static const MetaWaylandPointerGrabInterface drag_grab_interface = {
   drag_grab_focus,
   drag_grab_motion,
   drag_grab_button,
+};
+
+static gboolean
+keyboard_drag_grab_key (MetaWaylandKeyboardGrab *grab,
+                        const ClutterEvent      *event)
+{
+  return FALSE;
+}
+
+static void
+keyboard_drag_grab_modifiers (MetaWaylandKeyboardGrab *grab,
+                              ClutterModifierType      modifiers)
+{
+  MetaWaylandDragGrab *drag_grab;
+
+  drag_grab = wl_container_of (grab, drag_grab, keyboard_grab);
+
+  /* The modifiers here just contain keyboard modifiers, mix it with the
+   * mouse button modifiers we got when starting the drag operation.
+   */
+  modifiers |= drag_grab->buttons;
+
+  if (drag_grab->drag_data_source)
+    data_source_update_user_dnd_action (drag_grab->drag_data_source, modifiers);
+}
+
+static const MetaWaylandKeyboardGrabInterface keyboard_drag_grab_interface = {
+  keyboard_drag_grab_key,
+  keyboard_drag_grab_modifiers
 };
 
 static void
@@ -373,11 +556,15 @@ meta_wayland_data_device_start_drag (MetaWaylandDataDevice                 *data
   MetaWaylandSeat *seat = wl_container_of (data_device, seat, data_device);
   MetaWaylandDragGrab *drag_grab;
   ClutterPoint pos, stage_pos;
+  ClutterModifierType modifiers;
 
   data_device->current_grab = drag_grab = g_slice_new0 (MetaWaylandDragGrab);
 
   drag_grab->generic.interface = funcs;
   drag_grab->generic.pointer = &seat->pointer;
+
+  drag_grab->keyboard_grab.interface = &keyboard_drag_grab_interface;
+  drag_grab->keyboard_grab.keyboard = &seat->keyboard;
 
   drag_grab->drag_client = client;
   drag_grab->seat = seat;
@@ -393,6 +580,11 @@ meta_wayland_data_device_start_drag (MetaWaylandDataDevice                 *data
   drag_grab->drag_start_x = stage_pos.x;
   drag_grab->drag_start_y = stage_pos.y;
 
+  modifiers = clutter_input_device_get_modifier_state (seat->pointer.device);
+  drag_grab->buttons = modifiers &
+    (CLUTTER_BUTTON1_MASK | CLUTTER_BUTTON2_MASK | CLUTTER_BUTTON3_MASK |
+     CLUTTER_BUTTON4_MASK | CLUTTER_BUTTON5_MASK);
+
   if (source)
     {
       if (source->resource)
@@ -405,6 +597,7 @@ meta_wayland_data_device_start_drag (MetaWaylandDataDevice                 *data
       drag_grab->drag_data_source = source;
       meta_wayland_data_device_set_dnd_source (data_device,
                                                drag_grab->drag_data_source);
+      data_source_update_user_dnd_action (drag_grab->drag_data_source, modifiers);
     }
 
   if (icon_surface)
@@ -484,6 +677,10 @@ data_device_start_drag (struct wl_client *client,
   meta_wayland_data_device_start_drag (data_device, client,
                                        &drag_grab_interface,
                                        surface, drag_source, icon_surface);
+
+  meta_wayland_keyboard_set_focus (&seat->keyboard, NULL);
+  meta_wayland_keyboard_start_grab (&seat->keyboard,
+                                    &seat->data_device.current_grab->keyboard_grab);
 }
 
 static void
@@ -527,10 +724,32 @@ meta_wayland_source_cancel (MetaWaylandDataSource *source)
   wl_data_source_send_cancelled (source->resource);
 }
 
+static void
+meta_wayland_source_action (MetaWaylandDataSource *source,
+                            uint32_t               action)
+{
+  wl_data_source_send_action (source->resource, action);
+}
+
+static void
+meta_wayland_source_drop_performed (MetaWaylandDataSource *source)
+{
+  wl_data_source_send_drop_performed (source->resource);
+}
+
+static void
+meta_wayland_source_drag_finished (MetaWaylandDataSource *source)
+{
+  wl_data_source_send_drag_finished (source->resource);
+}
+
 static const MetaWaylandDataSourceFuncs meta_wayland_source_funcs = {
   meta_wayland_source_send,
   meta_wayland_source_target,
-  meta_wayland_source_cancel
+  meta_wayland_source_cancel,
+  meta_wayland_source_action,
+  meta_wayland_source_drop_performed,
+  meta_wayland_source_drag_finished
 };
 
 static void
