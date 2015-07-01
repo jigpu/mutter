@@ -522,7 +522,7 @@ place_window_if_needed(MetaWindow     *window,
 
           if (window->fullscreen_after_placement)
             {
-              window->saved_rect = info->current;
+              window->size_states.normal.rect = info->current;
               window->fullscreen = TRUE;
               window->fullscreen_after_placement = FALSE;
 
