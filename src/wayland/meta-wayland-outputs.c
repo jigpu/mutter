@@ -31,14 +31,15 @@
 
 #include <string.h>
 
-typedef struct {
-  MetaMonitorInfo          *monitor_info;
-  struct wl_global         *global;
-  int                       x, y;
-  enum wl_output_transform  transform;
+enum {
+  OUTPUT_DESTROYED,
 
-  GList                    *resources;
-} MetaWaylandOutput;
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL];
+
+G_DEFINE_TYPE (MetaWaylandOutput, meta_wayland_output, G_TYPE_OBJECT)
 
 static void
 output_resource_destroy (struct wl_resource *res)
@@ -46,6 +47,9 @@ output_resource_destroy (struct wl_resource *res)
   MetaWaylandOutput *wayland_output;
 
   wayland_output = wl_resource_get_user_data (res);
+  if (!wayland_output)
+    return;
+
   wayland_output->resources = g_list_remove (wayland_output->resources, res);
 }
 
@@ -108,16 +112,9 @@ static void
 wayland_output_destroy_notify (gpointer data)
 {
   MetaWaylandOutput *wayland_output = data;
-  GList *resources;
 
-  /* Make sure the destructors don't mess with the list */
-  resources = wayland_output->resources;
-  wayland_output->resources = NULL;
-
-  wl_global_destroy (wayland_output->global);
-  g_list_free (resources);
-
-  g_slice_free (MetaWaylandOutput, wayland_output);
+  g_signal_emit (wayland_output, signals[OUTPUT_DESTROYED], 0);
+  g_object_unref (wayland_output);
 }
 
 static inline enum wl_output_transform
@@ -174,6 +171,20 @@ wayland_output_update_for_output (MetaWaylandOutput *wayland_output,
   wayland_output->transform = wl_transform;
 }
 
+static MetaWaylandOutput *
+meta_wayland_output_new (MetaWaylandCompositor *compositor)
+{
+  MetaWaylandOutput *wayland_output;
+
+  wayland_output = g_object_new (META_TYPE_WAYLAND_OUTPUT, NULL);
+  wayland_output->global = wl_global_create (compositor->wayland_display,
+                                             &wl_output_interface,
+                                             META_WL_OUTPUT_VERSION,
+                                             wayland_output, bind_output);
+
+  return wayland_output;
+}
+
 static GHashTable *
 meta_wayland_compositor_update_outputs (MetaWaylandCompositor *compositor,
                                         MetaMonitorManager    *monitors)
@@ -200,13 +211,7 @@ meta_wayland_compositor_update_outputs (MetaWaylandCompositor *compositor,
           g_hash_table_steal (compositor->outputs, GSIZE_TO_POINTER (info->winsys_id));
         }
       else
-        {
-          wayland_output = g_slice_new0 (MetaWaylandOutput);
-          wayland_output->global = wl_global_create (compositor->wayland_display,
-                                                     &wl_output_interface,
-						     META_WL_OUTPUT_VERSION,
-                                                     wayland_output, bind_output);
-        }
+        wayland_output = meta_wayland_output_new (compositor);
 
       wayland_output_update_for_output (wayland_output, info);
       g_hash_table_insert (new_table, GSIZE_TO_POINTER (info->winsys_id), wayland_output);
@@ -221,6 +226,49 @@ on_monitors_changed (MetaMonitorManager    *monitors,
                      MetaWaylandCompositor *compositor)
 {
   compositor->outputs = meta_wayland_compositor_update_outputs (compositor, monitors);
+}
+
+static void
+meta_wayland_output_init (MetaWaylandOutput *wayland_output)
+{
+}
+
+static void
+meta_wayland_output_finalize (GObject *object)
+{
+  MetaWaylandOutput *wayland_output = META_WAYLAND_OUTPUT (object);
+  GList *l;
+
+  wl_global_destroy (wayland_output->global);
+
+  /* Make sure the wl_output destructor doesn't try to access MetaWaylandOutput
+   * after we have freed it.
+   */
+  for (l = wayland_output->resources; l; l = l->next)
+    {
+      struct wl_resource *output_resource = l->data;
+
+      wl_resource_set_user_data (output_resource, NULL);
+    }
+
+  g_list_free (wayland_output->resources);
+
+  G_OBJECT_CLASS (meta_wayland_output_parent_class)->finalize (object);
+}
+
+static void
+meta_wayland_output_class_init (MetaWaylandOutputClass *klass)
+{
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->finalize = meta_wayland_output_finalize;
+
+  signals[OUTPUT_DESTROYED] = g_signal_new ("output-destroyed",
+                                            G_TYPE_FROM_CLASS (object_class),
+                                            G_SIGNAL_RUN_LAST,
+                                            0,
+                                            NULL, NULL, NULL,
+                                            G_TYPE_NONE, 0);
 }
 
 void

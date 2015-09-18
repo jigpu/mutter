@@ -220,6 +220,7 @@ make_logical_config (MetaMonitorManager *manager)
           info.tile_group_id = 0;
           info.rect = crtc->rect;
           info.refresh_rate = crtc->current_mode->refresh_rate;
+          info.scale = 1;
           info.is_primary = FALSE;
           /* This starts true because we want
              is_presentation only if all outputs are
@@ -270,7 +271,10 @@ make_logical_config (MetaMonitorManager *manager)
       info->n_outputs = 1;
 
       if (output->is_primary || info->winsys_id == 0)
-        info->winsys_id = output->winsys_id;
+        {
+          info->scale = output->scale;
+          info->winsys_id = output->winsys_id;
+        }
 
       if (info->is_primary)
         manager->primary_monitor_index = info->number;
@@ -647,6 +651,8 @@ meta_monitor_manager_handle_get_resources (MetaDBusDisplayConfig *skeleton,
                              g_variant_new_string (get_connector_type_name (output->connector_type)));
       g_variant_builder_add (&properties, "{sv}", "underscanning",
                              g_variant_new_boolean (output->is_underscanning));
+      g_variant_builder_add (&properties, "{sv}", "supports-underscanning",
+                             g_variant_new_boolean (output->supports_underscanning));
 
       edid_file = manager_class->get_edid_file (manager, output);
       if (edid_file)
@@ -1410,25 +1416,35 @@ meta_output_parse_edid (MetaOutput *meta_output,
   if (parsed_edid)
     {
       meta_output->vendor = g_strndup (parsed_edid->manufacturer_code, 4);
-      if (parsed_edid->dsc_product_name[0])
-        meta_output->product = g_strndup (parsed_edid->dsc_product_name, 14);
-      else
-        meta_output->product = g_strdup_printf ("0x%04x", (unsigned) parsed_edid->product_code);
-      if (parsed_edid->dsc_serial_number[0])
-        meta_output->serial = g_strndup (parsed_edid->dsc_serial_number, 14);
-      else
-        meta_output->serial = g_strdup_printf ("0x%08x", parsed_edid->serial_number);
+      if (!g_utf8_validate (meta_output->vendor, -1, NULL))
+        g_clear_pointer (&meta_output->vendor, g_free);
+
+      meta_output->product = g_strndup (parsed_edid->dsc_product_name, 14);
+      if (!g_utf8_validate (meta_output->product, -1, NULL) ||
+          meta_output->product[0] == '\0')
+        {
+          g_clear_pointer (&meta_output->product, g_free);
+          meta_output->product = g_strdup_printf ("0x%04x", (unsigned) parsed_edid->product_code);
+        }
+
+      meta_output->serial = g_strndup (parsed_edid->dsc_serial_number, 14);
+      if (!g_utf8_validate (meta_output->serial, -1, NULL) ||
+          meta_output->serial[0] == '\0')
+        {
+          g_clear_pointer (&meta_output->serial, g_free);
+          meta_output->serial = g_strdup_printf ("0x%08x", parsed_edid->serial_number);
+        }
 
       g_free (parsed_edid);
     }
 
  out:
   if (!meta_output->vendor)
-    {
-      meta_output->vendor = g_strdup ("unknown");
-      meta_output->product = g_strdup ("unknown");
-      meta_output->serial = g_strdup ("unknown");
-    }
+    meta_output->vendor = g_strdup ("unknown");
+  if (!meta_output->product)
+    meta_output->product = g_strdup ("unknown");
+  if (!meta_output->serial)
+    meta_output->serial = g_strdup ("unknown");
 }
 
 void

@@ -241,59 +241,30 @@ get_property (MetaDisplay        *display,
 
 static gboolean
 atom_list_from_results (GetPropertyResults *results,
-                        Atom              **atoms_p,
+                        uint32_t          **atoms_p,
                         int                *n_atoms_p)
 {
   if (!validate_or_free_results (results, 32, XA_ATOM, FALSE))
     return FALSE;
 
-  *atoms_p = (Atom*) results->prop;
+  *atoms_p = (uint32_t*) results->prop;
   *n_atoms_p = results->n_items;
   results->prop = NULL;
 
   return TRUE;
 }
 
-gboolean
-meta_prop_get_atom_list (MetaDisplay *display,
-                         Window       xwindow,
-                         Atom         xatom,
-                         Atom       **atoms_p,
-                         int         *n_atoms_p)
-{
-  GetPropertyResults results;
-
-  *atoms_p = NULL;
-  *n_atoms_p = 0;
-
-  if (!get_property (display, xwindow, xatom, XA_ATOM,
-                     &results))
-    return FALSE;
-
-  return atom_list_from_results (&results, atoms_p, n_atoms_p);
-}
-
 static gboolean
 cardinal_list_from_results (GetPropertyResults *results,
-                            gulong            **cardinals_p,
+                            uint32_t          **cardinals_p,
                             int                *n_cardinals_p)
 {
   if (!validate_or_free_results (results, 32, XA_CARDINAL, FALSE))
     return FALSE;
 
-  *cardinals_p = (gulong*) results->prop;
+  *cardinals_p = (uint32_t *) results->prop;
   *n_cardinals_p = results->n_items;
   results->prop = NULL;
-
-#if GLIB_SIZEOF_LONG == 8
-  /* Xlib sign-extends format=32 items, but we want them unsigned */
-  {
-    int i;
-
-    for (i = 0; i < *n_cardinals_p; i++)
-      (*cardinals_p)[i] = (*cardinals_p)[i] & 0xffffffff;
-  }
-#endif
 
   return TRUE;
 }
@@ -302,7 +273,7 @@ gboolean
 meta_prop_get_cardinal_list (MetaDisplay *display,
                              Window       xwindow,
                              Atom         xatom,
-                             gulong     **cardinals_p,
+                             uint32_t   **cardinals_p,
                              int         *n_cardinals_p)
 {
   GetPropertyResults results;
@@ -321,19 +292,11 @@ static gboolean
 motif_hints_from_results (GetPropertyResults *results,
                           MotifWmHints      **hints_p)
 {
-  int real_size, max_size;
-#define MAX_ITEMS sizeof (MotifWmHints)/sizeof (gulong)
-
   *hints_p = NULL;
 
   if (results->type == None || results->n_items <= 0)
     {
       meta_verbose ("Motif hints had unexpected type or n_items\n");
-      if (results->prop)
-        {
-          g_free (results->prop);
-          results->prop = NULL;
-        }
       return FALSE;
     }
 
@@ -341,26 +304,12 @@ motif_hints_from_results (GetPropertyResults *results,
    * MotifWmHints than the one we expect, apparently.  I'm not sure of
    * the history behind it. See bug #89841 for example.
    */
-  *hints_p = malloc (sizeof (MotifWmHints));
+  *hints_p = calloc (1, sizeof (MotifWmHints));
   if (*hints_p == NULL)
-    {
-      if (results->prop)
-        {
-          g_free (results->prop);
-          results->prop = NULL;
-        }
-      return FALSE;
-    }
-  real_size = results->n_items * sizeof (gulong);
-  max_size = MAX_ITEMS * sizeof (gulong);
-  memcpy (*hints_p, results->prop, MIN (real_size, max_size));
+    return FALSE;
 
-  if (results->prop)
-    {
-      g_free (results->prop);
-      results->prop = NULL;
-    }
-
+  memcpy(*hints_p, results->prop, MIN (sizeof (MotifWmHints),
+                                       results->n_items * sizeof (uint32_t)));
   return TRUE;
 }
 
@@ -390,8 +339,7 @@ latin1_string_from_results (GetPropertyResults *results,
   if (!validate_or_free_results (results, 8, XA_STRING, FALSE))
     return FALSE;
 
-  *str_p = (char*) results->prop;
-  results->prop = NULL;
+  *str_p = g_strndup ((char *) results->prop, results->n_items);
 
   return TRUE;
 }
@@ -438,28 +386,9 @@ utf8_string_from_results (GetPropertyResults *results,
       return FALSE;
     }
 
-  *str_p = (char*) results->prop;
-  results->prop = NULL;
+  *str_p = g_strndup ((char *) results->prop, results->n_items);
 
   return TRUE;
-}
-
-gboolean
-meta_prop_get_utf8_string (MetaDisplay *display,
-                           Window       xwindow,
-                           Atom         xatom,
-                           char       **str_p)
-{
-  GetPropertyResults results;
-
-  *str_p = NULL;
-
-  if (!get_property (display, xwindow, xatom,
-                     display->atom_UTF8_STRING,
-                     &results))
-    return FALSE;
-
-  return utf8_string_from_results (&results, str_p);
 }
 
 /* this one freakishly returns g_malloc memory */
@@ -557,81 +486,6 @@ meta_prop_get_utf8_list (MetaDisplay   *display,
   return utf8_list_from_results (&results, str_p, n_str_p);
 }
 
-/* this one freakishly returns g_malloc memory */
-static gboolean
-latin1_list_from_results (GetPropertyResults *results,
-                        char             ***str_p,
-                        int                *n_str_p)
-{
-  int i;
-  int n_strings;
-  char **retval;
-  const char *p;
-
-  *str_p = NULL;
-  *n_str_p = 0;
-
-  if (!validate_or_free_results (results, 8, XA_STRING, FALSE))
-    return FALSE;
-
-  /* I'm not sure this is right, but I'm guessing the
-   * property is nul-separated
-   */
-  i = 0;
-  n_strings = 0;
-  while (i < (int) results->n_items)
-    {
-      if (results->prop[i] == '\0')
-        ++n_strings;
-      ++i;
-    }
-
-  if (results->prop[results->n_items - 1] != '\0')
-    ++n_strings;
-
-  /* we're guaranteed that results->prop has a nul on the end
-   * by XGetWindowProperty
-   */
-
-  retval = g_new0 (char*, n_strings + 1);
-
-  p = (char *)results->prop;
-  i = 0;
-  while (i < n_strings)
-    {
-      retval[i] = g_strdup (p);
-
-      p = p + strlen (p) + 1;
-      ++i;
-    }
-
-  *str_p = retval;
-  *n_str_p = i;
-
-  g_free (results->prop);
-  results->prop = NULL;
-
-  return TRUE;
-}
-
-gboolean
-meta_prop_get_latin1_list (MetaDisplay   *display,
-                           Window         xwindow,
-                           Atom           xatom,
-                           char        ***str_p,
-                           int           *n_str_p)
-{
-  GetPropertyResults results;
-
-  *str_p = NULL;
-
-  if (!get_property (display, xwindow, xatom,
-                     XA_STRING, &results))
-    return FALSE;
-
-  return latin1_list_from_results (&results, str_p, n_str_p);
-}
-
 void
 meta_prop_set_utf8_string_hint (MetaDisplay *display,
                                 Window xwindow,
@@ -678,7 +532,7 @@ counter_from_results (GetPropertyResults *results,
 
 static gboolean
 counter_list_from_results (GetPropertyResults *results,
-                           XSyncCounter      **counters_p,
+                           uint32_t          **counters_p,
                            int                *n_counters_p)
 {
   if (!validate_or_free_results (results, 32,
@@ -686,7 +540,7 @@ counter_list_from_results (GetPropertyResults *results,
                                  FALSE))
     return FALSE;
 
-  *counters_p = (XSyncCounter*) results->prop;
+  *counters_p = (uint32_t *) results->prop;
   *n_counters_p = results->n_items;
   results->prop = NULL;
 
@@ -714,7 +568,7 @@ gboolean
 meta_prop_get_cardinal (MetaDisplay   *display,
                         Window         xwindow,
                         Atom           xatom,
-                        gulong        *cardinal_p)
+                        uint32_t      *cardinal_p)
 {
   return meta_prop_get_cardinal_with_atom_type (display, xwindow, xatom,
                                                 XA_CARDINAL, cardinal_p);
@@ -723,16 +577,12 @@ meta_prop_get_cardinal (MetaDisplay   *display,
 static gboolean
 cardinal_with_atom_type_from_results (GetPropertyResults *results,
                                       Atom                prop_type,
-                                      gulong             *cardinal_p)
+                                      uint32_t           *cardinal_p)
 {
   if (!validate_or_free_results (results, 32, prop_type, TRUE))
     return FALSE;
 
-  *cardinal_p = *(gulong*) results->prop;
-#if GLIB_SIZEOF_LONG == 8
-  /* Xlib sign-extends format=32 items, but we want them unsigned */
-  *cardinal_p &= 0xffffffff;
-#endif
+  *cardinal_p = *((uint32_t *) results->prop);
   g_free (results->prop);
   results->prop = NULL;
 
@@ -744,7 +594,7 @@ meta_prop_get_cardinal_with_atom_type (MetaDisplay   *display,
                                        Window         xwindow,
                                        Atom           xatom,
                                        Atom           prop_type,
-                                       gulong        *cardinal_p)
+                                       uint32_t      *cardinal_p)
 {
   GetPropertyResults results;
 
@@ -802,21 +652,6 @@ text_property_from_results (GetPropertyResults *results,
   return *utf8_str_p != NULL;
 }
 
-gboolean
-meta_prop_get_text_property (MetaDisplay   *display,
-                             Window         xwindow,
-                             Atom           xatom,
-                             char         **utf8_str_p)
-{
-  GetPropertyResults results;
-
-  if (!get_property (display, xwindow, xatom, AnyPropertyType,
-                     &results))
-    return FALSE;
-
-  return text_property_from_results (&results, utf8_str_p);
-}
-
 static gboolean
 wm_hints_from_results (GetPropertyResults *results,
                        XWMHints          **hints_p)
@@ -870,23 +705,6 @@ wm_hints_from_results (GetPropertyResults *results,
   return TRUE;
 }
 
-gboolean
-meta_prop_get_wm_hints (MetaDisplay   *display,
-                        Window         xwindow,
-                        Atom           xatom,
-                        XWMHints     **hints_p)
-{
-  GetPropertyResults results;
-
-  *hints_p = NULL;
-
-  if (!get_property (display, xwindow, xatom, XA_WM_HINTS,
-                     &results))
-    return FALSE;
-
-  return wm_hints_from_results (&results, hints_p);
-}
-
 static gboolean
 class_hint_from_results (GetPropertyResults *results,
                          XClassHint         *class_hint)
@@ -929,24 +747,6 @@ class_hint_from_results (GetPropertyResults *results,
   results->prop = NULL;
 
   return TRUE;
-}
-
-gboolean
-meta_prop_get_class_hint (MetaDisplay   *display,
-                          Window         xwindow,
-                          Atom           xatom,
-                          XClassHint    *class_hint)
-{
-  GetPropertyResults results;
-
-  class_hint->res_class = NULL;
-  class_hint->res_name = NULL;
-
-  if (!get_property (display, xwindow, xatom, XA_STRING,
-                     &results))
-    return FALSE;
-
-  return class_hint_from_results (&results, class_hint);
 }
 
 static gboolean
@@ -1003,25 +803,6 @@ size_hints_from_results (GetPropertyResults *results,
   *hints_p = hints;
 
   return TRUE;
-}
-
-gboolean
-meta_prop_get_size_hints (MetaDisplay   *display,
-                          Window         xwindow,
-                          Atom           xatom,
-                          XSizeHints   **hints_p,
-                          gulong        *flags_p)
-{
-  GetPropertyResults results;
-
-  *hints_p = NULL;
-  *flags_p = 0;
-
-  if (!get_property (display, xwindow, xatom, XA_WM_SIZE_HINTS,
-                     &results))
-    return FALSE;
-
-  return size_hints_from_results (&results, hints_p, flags_p);
 }
 
 static char*
@@ -1154,7 +935,10 @@ meta_prop_get_values (MetaDisplay   *display,
       results.format = 0;
 
       if (!async_get_property_finish (xcb_conn, tasks[i], &results))
-        goto next;
+        {
+          values[i].type = META_PROP_VALUE_INVALID;
+          goto next;
+        }
 
       switch (values[i].type)
         {

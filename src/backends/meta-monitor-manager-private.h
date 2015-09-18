@@ -145,6 +145,7 @@ struct _MetaOutput
   gboolean is_primary;
   gboolean is_presentation;
   gboolean is_underscanning;
+  gboolean supports_underscanning;
 
   gpointer driver_private;
   GDestroyNotify driver_notify;
@@ -173,7 +174,8 @@ struct _MetaCRTC
   /* Used when changing configuration */
   gboolean is_dirty;
 
-  MetaCursorReference *cursor;
+  /* Used by cursor renderer backend */
+  void *cursor_renderer_private;
 
   gpointer driver_private;
   GDestroyNotify driver_notify;
@@ -216,6 +218,7 @@ struct _MetaMonitorInfo
   gboolean is_primary;
   gboolean is_presentation; /* XXX: not yet used */
   gboolean in_fullscreen;
+  int scale;
 
   /* The primary or first output for this monitor, 0 if we can't figure out.
      It can be matched to a winsys_id of a MetaOutput.
