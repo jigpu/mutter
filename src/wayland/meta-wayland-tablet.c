@@ -144,15 +144,13 @@ meta_wayland_tablet_update_cursor_surface (MetaWaylandTablet *tablet)
 
   if (tablet->current && tablet->current_tool)
     {
-      if (tablet->cursor_surface && tablet->cursor_surface->buffer)
+      if (tablet->cursor_surface)
         {
-          struct wl_resource *buffer = tablet->cursor_surface->buffer->resource;
-          cursor = meta_cursor_sprite_from_buffer (buffer,
-                                                   tablet->hotspot_x,
-                                                   tablet->hotspot_y);
+          MetaWaylandSurfaceRoleCursor *cursor_role =
+           META_WAYLAND_SURFACE_ROLE_CURSOR (tablet->cursor_surface->role);
+
+          cursor = cursor_role->cursor_sprite;
         }
-      else
-        cursor = NULL;
     }
   else if (tablet->current_tool)
     cursor = meta_cursor_sprite_from_theme (META_CURSOR_CROSSHAIR);
@@ -165,7 +163,7 @@ meta_wayland_tablet_update_cursor_surface (MetaWaylandTablet *tablet)
   meta_cursor_renderer_set_cursor (tablet->cursor_renderer, cursor);
 
   if (tablet->cursor)
-    meta_cursor_sprite_unref (tablet->cursor);
+    g_object_unref (tablet->cursor);
 
   tablet->cursor = cursor;
 }
