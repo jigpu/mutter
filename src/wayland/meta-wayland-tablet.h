@@ -45,7 +45,7 @@ struct _MetaWaylandTablet
   struct wl_listener focus_surface_destroy_listener;
 
   MetaCursorRenderer *cursor_renderer;
-  MetaCursorReference *cursor;
+  MetaCursorSprite *cursor;
   MetaWaylandSurface *cursor_surface;
   struct wl_listener cursor_surface_destroy_listener;
   int hotspot_x, hotspot_y;
