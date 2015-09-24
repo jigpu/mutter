@@ -754,24 +754,6 @@ meta_wayland_pointer_update_cursor_surface (MetaWaylandPointer *pointer)
 }
 
 static void
-cursor_sprite_prepare_at (MetaCursorSprite *cursor_sprite,
-                          int x,
-                          int y,
-                          MetaWaylandSurfaceRoleCursor *cursor_role)
-{
-  MetaWaylandSurfaceRole *role = META_WAYLAND_SURFACE_ROLE (cursor_role);
-  MetaWaylandSurface *surface = meta_wayland_surface_role_get_surface (role);
-  MetaDisplay *display = meta_get_display ();
-  MetaScreen *screen = display->screen;
-  const MetaMonitorInfo *monitor;
-
-  monitor = meta_screen_get_monitor_for_point (screen, x, y);
-  meta_cursor_sprite_set_texture_scale (cursor_sprite,
-                                        (float)monitor->scale / surface->scale);
-  meta_wayland_surface_update_outputs (surface);
-}
-
-static void
 meta_wayland_pointer_set_cursor_surface (MetaWaylandPointer *pointer,
                                          MetaWaylandSurface *cursor_surface)
 {

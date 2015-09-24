@@ -122,20 +122,6 @@ G_DEFINE_TYPE (MetaWaylandSurfaceRoleWlShellSurface,
                meta_wayland_surface_role_wl_shell_surface,
                META_TYPE_WAYLAND_SURFACE_ROLE);
 
-struct _MetaWaylandSurfaceRoleCursor
-{
-  MetaWaylandSurfaceRole parent;
-
-  int hot_x;
-  int hot_y;
-  MetaCursorSprite *cursor_sprite;
-};
-
-GType meta_wayland_surface_role_cursor_get_type (void) G_GNUC_CONST;
-G_DEFINE_TYPE (MetaWaylandSurfaceRoleCursor,
-               meta_wayland_surface_role_cursor,
-               META_TYPE_WAYLAND_SURFACE_ROLE);
-
 struct _MetaWaylandSurfaceRoleDND
 {
   MetaWaylandSurfaceRole parent;
@@ -2724,3 +2710,22 @@ meta_wayland_surface_role_subsurface_class_init (MetaWaylandSurfaceRoleSubsurfac
   surface_role_class->commit = subsurface_surface_commit;
   surface_role_class->is_on_output = actor_surface_is_on_output;
 }
+
+void
+cursor_sprite_prepare_at (MetaCursorSprite *cursor_sprite,
+                          int x,
+                          int y,
+                          MetaWaylandSurfaceRoleCursor *cursor_role)
+{
+  MetaWaylandSurfaceRole *role = META_WAYLAND_SURFACE_ROLE (cursor_role);
+  MetaWaylandSurface *surface = meta_wayland_surface_role_get_surface (role);
+  MetaDisplay *display = meta_get_display ();
+  MetaScreen *screen = display->screen;
+  const MetaMonitorInfo *monitor;
+
+  monitor = meta_screen_get_monitor_for_point (screen, x, y);
+  meta_cursor_sprite_set_texture_scale (cursor_sprite,
+                                        (float)monitor->scale / surface->scale);
+  meta_wayland_surface_update_outputs (surface);
+}
+
