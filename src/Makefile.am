@@ -51,6 +51,8 @@ mutter_built_sources += \
 	gtk-shell-server-protocol.h		\
 	xdg-shell-protocol.c			\
 	xdg-shell-server-protocol.h		\
+	wayland-tablet-protocol.c		\
+	wayland-tablet-server-protocol.h	\
 	$(NULL)
 endif
 
@@ -58,6 +60,7 @@ wayland_protocols =				\
 	wayland/protocol/pointer-gestures.xml	\
 	wayland/protocol/gtk-shell.xml		\
 	wayland/protocol/xdg-shell.xml		\
+	wayland/protocol/wayland-tablet.xml	\
 	$(NULL)
 
 libmutter_la_SOURCES =				\
@@ -270,6 +273,12 @@ libmutter_la_SOURCES +=				\
 	wayland/meta-wayland-popup.h		\
 	wayland/meta-wayland-seat.c		\
 	wayland/meta-wayland-seat.h		\
+	wayland/meta-wayland-tablet.c		\
+	wayland/meta-wayland-tablet.h		\
+	wayland/meta-wayland-tablet-manager.c	\
+	wayland/meta-wayland-tablet-manager.h	\
+	wayland/meta-wayland-tablet-tool.c	\
+	wayland/meta-wayland-tablet-tool.h	\
 	wayland/meta-wayland-touch.c		\
 	wayland/meta-wayland-touch.h		\
 	wayland/meta-wayland-surface.c		\
