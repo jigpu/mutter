@@ -55,6 +55,15 @@ struct _MetaWaylandSurfaceRoleClass
                             MetaMonitorInfo        *monitor);
 };
 
+struct _MetaWaylandSurfaceRoleCursor
+{
+  MetaWaylandSurfaceRole parent;
+
+  int hot_x;
+  int hot_y;
+  MetaCursorSprite *cursor_sprite;
+};
+
 struct _MetaWaylandSerial {
   gboolean set;
   uint32_t value;
@@ -215,19 +224,6 @@ struct _MetaWaylandSurface
   } sub;
 };
 
-struct _MetaWaylandSurfaceRoleCursor
-{
-  MetaWaylandSurfaceRole parent;
-
-  int hot_x;
-  int hot_y;
-  MetaCursorSprite *cursor_sprite;
-};
-
-GType meta_wayland_surface_role_cursor_get_type (void) G_GNUC_CONST;
-G_DEFINE_TYPE (MetaWaylandSurfaceRoleCursor,
-               meta_wayland_surface_role_cursor,
-               META_TYPE_WAYLAND_SURFACE_ROLE);
 
 void                meta_wayland_shell_init     (MetaWaylandCompositor *compositor);
 
@@ -278,5 +274,7 @@ cursor_sprite_prepare_at (MetaCursorSprite *cursor_sprite,
                           int y,
                           MetaWaylandSurfaceRoleCursor *cursor_role);
 
+void
+update_cursor_sprite_texture (MetaWaylandSurface *surface);
 
 #endif

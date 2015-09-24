@@ -55,6 +55,11 @@
 #include "meta-surface-actor-wayland.h"
 #include "meta-xwayland-private.h"
 
+GType meta_wayland_surface_role_cursor_get_type (void) G_GNUC_CONST;
+G_DEFINE_TYPE (MetaWaylandSurfaceRoleCursor,
+               meta_wayland_surface_role_cursor,
+               META_TYPE_WAYLAND_SURFACE_ROLE);
+
 typedef struct _MetaWaylandSurfaceRolePrivate
 {
   MetaWaylandSurface *surface;
@@ -257,7 +262,7 @@ meta_wayland_surface_queue_pending_state_frame_callbacks (MetaWaylandSurface    
   wl_list_init (&pending->frame_callback_list);
 }
 
-static void
+void
 update_cursor_sprite_texture (MetaWaylandSurface *surface)
 {
   MetaCursorRenderer *cursor_renderer =
@@ -2606,7 +2611,7 @@ cursor_surface_role_dispose (GObject *object)
 
   if (pointer->cursor_surface == surface)
     pointer->cursor_surface = NULL;
-  meta_wayland_pointer_update_cursor_surface (pointer);
+  //meta_wayland_pointer_update_cursor_surface (pointer);
 
   g_clear_object (&cursor_role->cursor_sprite);
 
