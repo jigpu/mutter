@@ -39,11 +39,8 @@ G_DEFINE_TYPE (MetaCursorRendererX11Nested, meta_cursor_renderer_x11_nested,
                META_TYPE_CURSOR_RENDERER);
 
 static gboolean
-meta_cursor_renderer_x11_nested_update_cursor (MetaCursorRenderer *renderer,
-                                               MetaCursorSprite   *cursor_sprite)
+meta_cursor_renderer_x11_nested_update_cursor (MetaCursorRenderer *renderer)
 {
-  if (cursor_sprite)
-    meta_cursor_sprite_realize_texture (cursor_sprite);
   return FALSE;
 }
 

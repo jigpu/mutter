@@ -35,13 +35,9 @@
 #include <X11/extensions/Xfixes.h>
 #include <X11/Xcursor/Xcursor.h>
 
-enum {
-  PREPARE_AT,
-
-  LAST_SIGNAL
-};
-
-static guint signals[LAST_SIGNAL];
+#ifdef HAVE_WAYLAND
+#include <cogl/cogl-wayland-server.h>
+#endif
 
 struct _MetaCursorSprite
 {
@@ -50,14 +46,10 @@ struct _MetaCursorSprite
   MetaCursor cursor;
 
   CoglTexture2D *texture;
-  float texture_scale;
   int hot_x, hot_y;
 
   int current_frame;
   XcursorImages *xcursor_images;
-
-  int theme_scale;
-  gboolean theme_dirty;
 };
 
 GType meta_cursor_sprite_get_type (void) G_GNUC_CONST;
@@ -120,11 +112,11 @@ meta_cursor_create_x_cursor (Display    *xdisplay,
 }
 
 static XcursorImages *
-load_cursor_on_client (MetaCursor cursor, int scale)
+load_cursor_on_client (MetaCursor cursor)
 {
   return XcursorLibraryLoadImages (translate_meta_cursor (cursor),
                                    meta_prefs_get_cursor_theme (),
-                                   meta_prefs_get_cursor_size () * scale);
+                                   meta_prefs_get_cursor_size ());
 }
 
 static void
@@ -137,7 +129,6 @@ meta_cursor_sprite_load_from_xcursor_image (MetaCursorSprite *self,
   CoglPixelFormat cogl_format;
   ClutterBackend *clutter_backend;
   CoglContext *cogl_context;
-  CoglTexture *texture;
 
   g_assert (self->texture == NULL);
 
@@ -153,15 +144,14 @@ meta_cursor_sprite_load_from_xcursor_image (MetaCursorSprite *self,
 
   clutter_backend = clutter_get_default_backend ();
   cogl_context = clutter_backend_get_cogl_context (clutter_backend);
-  texture = cogl_texture_2d_new_from_data (cogl_context,
-                                           width, height,
-                                           cogl_format,
-                                           rowstride,
-                                           (uint8_t *) xc_image->pixels,
-                                           NULL);
-  meta_cursor_sprite_set_texture (self, texture,
-                                  xc_image->xhot, xc_image->yhot);
-  cogl_object_unref (texture);
+  self->texture = cogl_texture_2d_new_from_data (cogl_context,
+                                                 width, height,
+                                                 cogl_format,
+                                                 rowstride,
+                                                 (uint8_t *) xc_image->pixels,
+                                                 NULL);
+  self->hot_x = xc_image->xhot;
+  self->hot_y = xc_image->yhot;
 
   meta_cursor_renderer_realize_cursor_from_xcursor (renderer, self, xc_image);
 }
@@ -208,82 +198,92 @@ meta_cursor_sprite_is_animated (MetaCursorSprite *self)
 }
 
 MetaCursorSprite *
-meta_cursor_sprite_new (void)
+meta_cursor_sprite_from_theme (MetaCursor cursor)
 {
-  return g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
-}
-
-static void
-meta_cursor_sprite_load_from_theme (MetaCursorSprite *self)
-{
+  MetaCursorSprite *self;
   XcursorImage *image;
 
-  g_assert (self->cursor != META_CURSOR_NONE);
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
 
-  /* We might be reloading with a different scale. If so clear the old data. */
-  if (self->xcursor_images)
-    {
-      g_clear_pointer (&self->texture, cogl_object_unref);
-      XcursorImagesDestroy (self->xcursor_images);
-    }
-
+  self->cursor = cursor;
   self->current_frame = 0;
-  self->xcursor_images = load_cursor_on_client (self->cursor,
-                                                self->theme_scale);
+  self->xcursor_images = load_cursor_on_client (self->cursor);
   if (!self->xcursor_images)
     meta_fatal ("Could not find cursor. Perhaps set XCURSOR_PATH?");
 
   image = meta_cursor_sprite_get_current_frame_image (self);
   meta_cursor_sprite_load_from_xcursor_image (self, image);
 
-  self->theme_dirty = FALSE;
+  return self;
 }
 
 MetaCursorSprite *
-meta_cursor_sprite_from_theme (MetaCursor cursor)
+meta_cursor_sprite_from_texture (CoglTexture2D *texture,
+                                 int            hot_x,
+                                 int            hot_y)
 {
   MetaCursorSprite *self;
 
-  self = meta_cursor_sprite_new ();
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
 
-  self->cursor = cursor;
-  self->theme_dirty = TRUE;
+  cogl_object_ref (texture);
+
+  self->texture = texture;
+  self->hot_x = hot_x;
+  self->hot_y = hot_y;
 
   return self;
 }
 
-void
-meta_cursor_sprite_set_texture (MetaCursorSprite *self,
-                                CoglTexture      *texture,
-                                int               hot_x,
-                                int               hot_y)
+#ifdef HAVE_WAYLAND
+static void
+meta_cursor_sprite_load_from_buffer (MetaCursorSprite   *self,
+                                     struct wl_resource *buffer,
+                                     int                 hot_x,
+                                     int                 hot_y)
 {
-  g_clear_pointer (&self->texture, cogl_object_unref);
-  if (texture)
-    self->texture = cogl_object_ref (texture);
+  MetaBackend *meta_backend = meta_get_backend ();
+  MetaCursorRenderer *renderer =
+    meta_backend_get_cursor_renderer (meta_backend);
+  ClutterBackend *backend;
+  CoglContext *cogl_context;
+
   self->hot_x = hot_x;
   self->hot_y = hot_y;
+
+  backend = clutter_get_default_backend ();
+  cogl_context = clutter_backend_get_cogl_context (backend);
+
+  self->texture = cogl_wayland_texture_2d_new_from_buffer (cogl_context, buffer, NULL);
+
+  meta_cursor_renderer_realize_cursor_from_wl_buffer (renderer, self, buffer);
 }
 
-void
-meta_cursor_sprite_set_texture_scale (MetaCursorSprite *self,
-                                      float             scale)
+MetaCursorSprite *
+meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
+                                int                 hot_x,
+                                int                 hot_y)
 {
-  self->texture_scale = scale;
-}
+  MetaCursorSprite *self;
 
-void
-meta_cursor_sprite_set_theme_scale (MetaCursorSprite *self,
-                                    int               theme_scale)
-{
-  if (self->theme_scale != theme_scale)
-    self->theme_dirty = TRUE;
-  self->theme_scale = theme_scale;
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+
+  meta_cursor_sprite_load_from_buffer (self, buffer, hot_x, hot_y);
+
+  return self;
 }
+#endif
 
 CoglTexture *
-meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self)
+meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self,
+                                     int              *hot_x,
+                                     int              *hot_y)
 {
+  if (hot_x)
+    *hot_x = self->hot_x;
+  if (hot_y)
+    *hot_y = self->hot_y;
+
   return COGL_TEXTURE (self->texture);
 }
 
@@ -302,31 +302,21 @@ meta_cursor_sprite_get_hotspot (MetaCursorSprite *self,
   *hot_y = self->hot_y;
 }
 
-float
-meta_cursor_sprite_get_texture_scale (MetaCursorSprite *self)
+guint
+meta_cursor_sprite_get_width (MetaCursorSprite *self)
 {
-  return self->texture_scale;
+  return cogl_texture_get_width (COGL_TEXTURE (self->texture));
 }
 
-void
-meta_cursor_sprite_prepare_at (MetaCursorSprite *self,
-                               int               x,
-                               int               y)
+guint
+meta_cursor_sprite_get_height (MetaCursorSprite *self)
 {
-  g_signal_emit (self, signals[PREPARE_AT], 0, x, y);
-}
-
-void
-meta_cursor_sprite_realize_texture (MetaCursorSprite *self)
-{
-  if (self->theme_dirty)
-    meta_cursor_sprite_load_from_theme (self);
+  return cogl_texture_get_height (COGL_TEXTURE (self->texture));
 }
 
 static void
 meta_cursor_sprite_init (MetaCursorSprite *self)
 {
-  self->texture_scale = 1.0f;
 }
 
 static void
@@ -348,13 +338,4 @@ meta_cursor_sprite_class_init (MetaCursorSpriteClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->finalize = meta_cursor_sprite_finalize;
-
-  signals[PREPARE_AT] = g_signal_new ("prepare-at",
-                                      G_TYPE_FROM_CLASS (object_class),
-                                      G_SIGNAL_RUN_LAST,
-                                      0,
-                                      NULL, NULL, NULL,
-                                      G_TYPE_NONE, 2,
-                                      G_TYPE_INT,
-                                      G_TYPE_INT);
 }

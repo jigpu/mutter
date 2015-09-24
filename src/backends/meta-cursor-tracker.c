@@ -246,11 +246,10 @@ ensure_xfixes_cursor (MetaCursorTracker *tracker)
 
   if (sprite != NULL)
     {
-      MetaCursorSprite *cursor_sprite = meta_cursor_sprite_new ();
-      meta_cursor_sprite_set_texture (cursor_sprite,
-                                      sprite,
-                                      cursor_image->xhot,
-                                      cursor_image->yhot);
+      MetaCursorSprite *cursor_sprite =
+        meta_cursor_sprite_from_texture (sprite,
+                                         cursor_image->xhot,
+                                         cursor_image->yhot);
       cogl_object_unref (sprite);
       tracker->xfixes_cursor = cursor_sprite;
     }
@@ -280,7 +279,7 @@ meta_cursor_tracker_get_sprite (MetaCursorTracker *tracker)
     }
 
   if (cursor_sprite)
-    return meta_cursor_sprite_get_cogl_texture (cursor_sprite);
+    return meta_cursor_sprite_get_cogl_texture (cursor_sprite, NULL, NULL);
   else
     return NULL;
 }
@@ -312,7 +311,7 @@ meta_cursor_tracker_get_hot (MetaCursorTracker *tracker,
     }
 
   if (cursor_sprite)
-    meta_cursor_sprite_get_hotspot (cursor_sprite, x, y);
+    meta_cursor_sprite_get_cogl_texture (cursor_sprite, x, y);
   else
     {
       if (x)
