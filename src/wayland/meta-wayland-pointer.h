@@ -31,12 +31,6 @@
 
 #include <meta/meta-cursor-tracker.h>
 
-#define META_TYPE_WAYLAND_SURFACE_ROLE_CURSOR (meta_wayland_surface_role_cursor_get_type ())
-G_DECLARE_FINAL_TYPE (MetaWaylandSurfaceRoleCursor,
-                      meta_wayland_surface_role_cursor,
-                      META, WAYLAND_SURFACE_ROLE_CURSOR,
-                      MetaWaylandSurfaceRole);
-
 struct _MetaWaylandPointerGrabInterface
 {
   void (*focus) (MetaWaylandPointerGrab *grab,

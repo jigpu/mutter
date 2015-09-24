@@ -122,6 +122,20 @@ G_DEFINE_TYPE (MetaWaylandSurfaceRoleWlShellSurface,
                meta_wayland_surface_role_wl_shell_surface,
                META_TYPE_WAYLAND_SURFACE_ROLE);
 
+struct _MetaWaylandSurfaceRoleCursor
+{
+  MetaWaylandSurfaceRole parent;
+
+  int hot_x;
+  int hot_y;
+  MetaCursorSprite *cursor_sprite;
+};
+
+GType meta_wayland_surface_role_cursor_get_type (void) G_GNUC_CONST;
+G_DEFINE_TYPE (MetaWaylandSurfaceRoleCursor,
+               meta_wayland_surface_role_cursor,
+               META_TYPE_WAYLAND_SURFACE_ROLE);
+
 struct _MetaWaylandSurfaceRoleDND
 {
   MetaWaylandSurfaceRole parent;
@@ -255,6 +269,69 @@ meta_wayland_surface_queue_pending_state_frame_callbacks (MetaWaylandSurface    
   wl_list_insert_list (&surface->compositor->frame_callbacks,
                        &pending->frame_callback_list);
   wl_list_init (&pending->frame_callback_list);
+}
+
+static void
+update_cursor_sprite_texture (MetaWaylandSurface *surface)
+{
+  MetaCursorRenderer *cursor_renderer =
+    meta_backend_get_cursor_renderer (meta_get_backend ());
+  MetaCursorTracker *cursor_tracker = meta_cursor_tracker_get_for_screen (NULL);
+  MetaWaylandSurfaceRoleCursor *cursor_role =
+    META_WAYLAND_SURFACE_ROLE_CURSOR (surface->role);
+  MetaCursorSprite *cursor_sprite = cursor_role->cursor_sprite;
+  ClutterBackend *clutter_backend = clutter_get_default_backend ();
+  CoglContext *cogl_context =
+    clutter_backend_get_cogl_context (clutter_backend);
+  CoglTexture *texture;
+
+  if (surface->buffer)
+    {
+      struct wl_resource *buffer;
+
+      buffer = surface->buffer->resource;
+      texture = cogl_wayland_texture_2d_new_from_buffer (cogl_context,
+                                                         buffer,
+                                                         NULL);
+
+      meta_cursor_sprite_set_texture (cursor_sprite,
+                                      texture,
+                                      cursor_role->hot_x * surface->scale,
+                                      cursor_role->hot_y * surface->scale);
+      meta_cursor_renderer_realize_cursor_from_wl_buffer (cursor_renderer,
+                                                          cursor_sprite,
+                                                          buffer);
+      cogl_object_unref (texture);
+    }
+  else
+    {
+      meta_cursor_sprite_set_texture (cursor_sprite, NULL, 0, 0);
+    }
+
+  if (cursor_sprite == meta_cursor_tracker_get_displayed_cursor (cursor_tracker))
+    meta_cursor_renderer_force_update (cursor_renderer);
+}
+
+static void
+cursor_surface_role_assigned (MetaWaylandSurfaceRole *surface_role)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+
+  meta_wayland_surface_queue_pending_frame_callbacks (surface);
+}
+
+static void
+cursor_surface_role_commit (MetaWaylandSurfaceRole  *surface_role,
+                            MetaWaylandPendingState *pending)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+
+  meta_wayland_surface_queue_pending_state_frame_callbacks (surface, pending);
+
+  if (pending->newly_attached)
+    update_cursor_sprite_texture (surface);
 }
 
 static void
@@ -2493,6 +2570,80 @@ actor_surface_assigned (MetaWaylandSurfaceRole *surface_role)
   meta_surface_actor_wayland_add_frame_callbacks (surface_actor,
                                                   &surface->pending_frame_callback_list);
   wl_list_init (&surface->pending_frame_callback_list);
+}
+
+static gboolean
+cursor_surface_role_is_on_output (MetaWaylandSurfaceRole *role,
+                                  MetaMonitorInfo        *monitor)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (role);
+  MetaWaylandPointer *pointer = &surface->compositor->seat->pointer;
+  MetaCursorTracker *cursor_tracker = meta_cursor_tracker_get_for_screen (NULL);
+  MetaCursorRenderer *cursor_renderer =
+    meta_backend_get_cursor_renderer (meta_get_backend ());
+  MetaWaylandSurfaceRoleCursor *cursor_role =
+    META_WAYLAND_SURFACE_ROLE_CURSOR (surface->role);
+  MetaCursorSprite *displayed_cursor_sprite;
+  MetaRectangle rect;
+
+  if (surface != pointer->cursor_surface)
+    return FALSE;
+
+  displayed_cursor_sprite =
+    meta_cursor_tracker_get_displayed_cursor (cursor_tracker);
+  if (!displayed_cursor_sprite)
+    return FALSE;
+
+  if (cursor_role->cursor_sprite != displayed_cursor_sprite)
+    return FALSE;
+
+  rect = meta_cursor_renderer_calculate_rect (cursor_renderer,
+                                              cursor_role->cursor_sprite);
+  return meta_rectangle_overlap (&rect, &monitor->rect);
+}
+
+static void
+cursor_surface_role_dispose (GObject *object)
+{
+  MetaWaylandSurfaceRoleCursor *cursor_role =
+    META_WAYLAND_SURFACE_ROLE_CURSOR (object);
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (object));
+  MetaWaylandCompositor *compositor = meta_wayland_compositor_get_default ();
+  MetaWaylandPointer *pointer = &compositor->seat->pointer;
+  MetaCursorTracker *cursor_tracker = meta_cursor_tracker_get_for_screen (NULL);
+
+  g_signal_handlers_disconnect_by_func (cursor_tracker,
+                                        (gpointer) cursor_sprite_prepare_at,
+                                        cursor_role);
+
+  if (pointer->cursor_surface == surface)
+    pointer->cursor_surface = NULL;
+  meta_wayland_pointer_update_cursor_surface (pointer);
+
+  g_clear_object (&cursor_role->cursor_sprite);
+
+  G_OBJECT_CLASS (meta_wayland_surface_role_cursor_parent_class)->dispose (object);
+}
+
+static void
+meta_wayland_surface_role_cursor_init (MetaWaylandSurfaceRoleCursor *role)
+{
+}
+
+static void
+meta_wayland_surface_role_cursor_class_init (MetaWaylandSurfaceRoleCursorClass *klass)
+{
+  MetaWaylandSurfaceRoleClass *surface_role_class =
+    META_WAYLAND_SURFACE_ROLE_CLASS (klass);
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  surface_role_class->assigned = cursor_surface_role_assigned;
+  surface_role_class->commit = cursor_surface_role_commit;
+  surface_role_class->is_on_output = cursor_surface_role_is_on_output;
+
+  object_class->dispose = cursor_surface_role_dispose;
 }
 
 static void
