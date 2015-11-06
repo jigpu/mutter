@@ -45,10 +45,10 @@ handle_pinch_begin (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->pinch_gesture_resources)
     {
-      _wl_pointer_gesture_pinch_send_begin (resource, serial,
-                                            clutter_event_get_time (event),
-                                            pointer->focus_surface->resource,
-                                            2);
+      zwl_pointer_gesture_pinch1_send_begin (resource, serial,
+                                             clutter_event_get_time (event),
+                                             pointer->focus_surface->resource,
+                                             2);
     }
 }
 
@@ -67,12 +67,12 @@ handle_pinch_update (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->pinch_gesture_resources)
     {
-      _wl_pointer_gesture_pinch_send_update (resource,
-                                             clutter_event_get_time (event),
-                                             wl_fixed_from_double (dx),
-                                             wl_fixed_from_double (dy),
-                                             wl_fixed_from_double (scale),
-                                             wl_fixed_from_double (rotation));
+      zwl_pointer_gesture_pinch1_send_update (resource,
+                                              clutter_event_get_time (event),
+                                              wl_fixed_from_double (dx),
+                                              wl_fixed_from_double (dy),
+                                              wl_fixed_from_double (scale),
+                                              wl_fixed_from_double (rotation));
     }
 }
 
@@ -93,9 +93,9 @@ handle_pinch_end (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->pinch_gesture_resources)
     {
-      _wl_pointer_gesture_pinch_send_end (resource, serial,
-                                          clutter_event_get_time (event),
-                                          cancelled);
+      zwl_pointer_gesture_pinch1_send_end (resource, serial,
+                                           clutter_event_get_time (event),
+                                           cancelled);
     }
 }
 
@@ -135,7 +135,7 @@ pointer_gesture_pinch_destroy (struct wl_client   *client,
   wl_resource_destroy (resource);
 }
 
-static const struct _wl_pointer_gesture_pinch_interface pointer_gesture_pinch_interface = {
+static const struct zwl_pointer_gesture_pinch1_interface pointer_gesture_pinch_interface = {
   pointer_gesture_pinch_destroy
 };
 
@@ -151,7 +151,7 @@ meta_wayland_pointer_gesture_pinch_create_new_resource (MetaWaylandPointer *poin
   pointer_client = meta_wayland_pointer_get_pointer_client (pointer, client);
   g_return_if_fail (pointer_client != NULL);
 
-  res = wl_resource_create (client, &_wl_pointer_gesture_pinch_interface,
+  res = wl_resource_create (client, &zwl_pointer_gesture_pinch1_interface,
                             wl_resource_get_version (gestures_resource), id);
   wl_resource_set_implementation (res, &pointer_gesture_pinch_interface, pointer,
                                   meta_wayland_pointer_unbind_pointer_client_resource);

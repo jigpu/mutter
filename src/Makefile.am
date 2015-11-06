@@ -55,9 +55,12 @@ mutter_built_sources += \
 endif
 
 wayland_protocols =				\
-	wayland/protocol/pointer-gestures.xml	\
+	$(WAYLAND_PROTOCOLS_DIR)/unstable/pointer-gestures/pointer-gestures-unstable-v1.xml \
+	$(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml \
+	$(NULL)
+
+internal_wayland_protocols =			\
 	wayland/protocol/gtk-shell.xml		\
-	wayland/protocol/xdg-shell.xml		\
 	$(NULL)
 
 libmutter_la_SOURCES =				\
@@ -420,7 +423,7 @@ pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libmutter.pc
 
 EXTRA_DIST +=					\
-	$(wayland_protocols)			\
+	$(internal_wayland_protocols)		\
 	libmutter.pc.in				\
 	meta-enum-types.h.in			\
 	meta-enum-types.c.in			\
@@ -480,6 +483,15 @@ $(dbus_login1_built_sources) : Makefile.am org.freedesktop.login1.xml
 		--c-namespace Login1							\
 		--generate-c-code meta-dbus-login1					\
 		$(srcdir)/org.freedesktop.login1.xml
+
+pointer-gestures-protocol.c: $(WAYLAND_PROTOCOLS_DIR)/unstable/pointer-gestures/pointer-gestures-unstable-v1.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
+pointer-gestures-server-protocol.h: $(WAYLAND_PROTOCOLS_DIR)/unstable/pointer-gestures/pointer-gestures-unstable-v1.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
+xdg-shell-protocol.c: $(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
+xdg-shell-server-protocol.h: $(WAYLAND_PROTOCOLS_DIR)/unstable/xdg-shell/xdg-shell-unstable-v5.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
 
 %-protocol.c : $(srcdir)/wayland/protocol/%.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@

@@ -46,10 +46,10 @@ handle_swipe_begin (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->swipe_gesture_resources)
     {
-      _wl_pointer_gesture_swipe_send_begin (resource, serial,
-                                            clutter_event_get_time (event),
-                                            pointer->focus_surface->resource,
-                                            fingers);
+      zwl_pointer_gesture_swipe1_send_begin (resource, serial,
+                                             clutter_event_get_time (event),
+                                             pointer->focus_surface->resource,
+                                             fingers);
     }
 }
 
@@ -66,10 +66,10 @@ handle_swipe_update (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->swipe_gesture_resources)
     {
-      _wl_pointer_gesture_swipe_send_update (resource,
-                                             clutter_event_get_time (event),
-                                             wl_fixed_from_double (dx),
-                                             wl_fixed_from_double (dy));
+      zwl_pointer_gesture_swipe1_send_update (resource,
+                                              clutter_event_get_time (event),
+                                              wl_fixed_from_double (dx),
+                                              wl_fixed_from_double (dy));
     }
 }
 
@@ -90,9 +90,9 @@ handle_swipe_end (MetaWaylandPointer *pointer,
 
   wl_resource_for_each (resource, &pointer_client->swipe_gesture_resources)
     {
-      _wl_pointer_gesture_swipe_send_end (resource, serial,
-                                          clutter_event_get_time (event),
-                                          cancelled);
+      zwl_pointer_gesture_swipe1_send_end (resource, serial,
+                                           clutter_event_get_time (event),
+                                           cancelled);
     }
 }
 
@@ -131,7 +131,7 @@ pointer_gesture_swipe_release (struct wl_client   *client,
   wl_resource_destroy (resource);
 }
 
-static const struct _wl_pointer_gesture_swipe_interface pointer_gesture_swipe_interface = {
+static const struct zwl_pointer_gesture_swipe1_interface pointer_gesture_swipe_interface = {
   pointer_gesture_swipe_release
 };
 
@@ -147,7 +147,7 @@ meta_wayland_pointer_gesture_swipe_create_new_resource (MetaWaylandPointer *poin
   pointer_client = meta_wayland_pointer_get_pointer_client (pointer, client);
   g_return_if_fail (pointer_client != NULL);
 
-  res = wl_resource_create (client, &_wl_pointer_gesture_swipe_interface,
+  res = wl_resource_create (client, &zwl_pointer_gesture_swipe1_interface,
                             wl_resource_get_version (pointer_resource), id);
   wl_resource_set_implementation (res, &pointer_gesture_swipe_interface, pointer,
                                   meta_wayland_pointer_unbind_pointer_client_resource);

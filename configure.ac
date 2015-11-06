@@ -203,7 +203,7 @@ AS_IF([test "$have_native_backend" = "yes"], [
 ])
 AM_CONDITIONAL([HAVE_NATIVE_BACKEND],[test "$have_native_backend" = "yes"])
 
-MUTTER_WAYLAND_MODULES="clutter-wayland-1.0 clutter-wayland-compositor-1.0 wayland-server >= 1.6.90"
+MUTTER_WAYLAND_MODULES="clutter-wayland-1.0 clutter-wayland-compositor-1.0 wayland-server >= 1.6.90 wayland-protocols"
 
 AC_ARG_ENABLE(wayland,
   AS_HELP_STRING([--disable-wayland], [disable mutter on wayland support]),,
@@ -219,6 +219,9 @@ AS_IF([test "$have_wayland" = "yes"], [
     [AC_MSG_ERROR([Could not find wayland-scanner in your PATH, required for parsing wayland extension protocols])])
   AC_SUBST([WAYLAND_SCANNER])
   AC_DEFINE([HAVE_WAYLAND],[1],[Define if you want to enable Wayland support])
+
+  WAYLAND_PROTOCOLS_DIR=`$PKG_CONFIG --variable=pkgdatadir wayland-protocols`
+  AC_SUBST([WAYLAND_PROTOCOLS_DIR])
 ])
 AM_CONDITIONAL([HAVE_WAYLAND],[test "$have_wayland" = "yes"])
 
